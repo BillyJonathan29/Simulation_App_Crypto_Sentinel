@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_state_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -713,7 +715,9 @@ class LoginBottomSheetMockup extends StatefulWidget {
 }
 
 class _LoginBottomSheetMockupState extends State<LoginBottomSheetMockup> {
-  final TextEditingController _usernameController = TextEditingController(text: 'aam');
+  final TextEditingController _usernameController = TextEditingController(
+    text: 'billy',
+  );
   final TextEditingController _passwordController = TextEditingController();
   bool _isObscure = true;
   bool _isUsernameFilled = true;
@@ -757,8 +761,55 @@ class _LoginBottomSheetMockupState extends State<LoginBottomSheetMockup> {
 
     if ((username == 'aam' || username == 'billy') && password == '12345678') {
       FocusScope.of(context).unfocus();
-      Navigator.pop(context); // Close bottom sheet
-      Navigator.pushReplacementNamed(context, '/home');
+
+      // Load real balance and transaction history from backend database
+      final provider = Provider.of<AppStateProvider>(context, listen: false);
+      provider.loadUserBalance();
+      provider.loadTransactions();
+
+      // Show success dialog popup
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: const [
+              Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF00A86B),
+                size: 28,
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Login Berhasil',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Selamat datang kembali di BRImo, Billy Jonathan!',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx); // Close dialog
+                Navigator.pop(context); // Close bottom sheet
+                Navigator.pushReplacementNamed(context, '/home');
+              },
+              child: const Text(
+                'OK',
+                style: TextStyle(
+                  color: Color(0xFF0F75BD),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

@@ -17,143 +17,48 @@ class AppStateProvider extends ChangeNotifier {
   );
 
   // Reactive Account Balance
-  double _balance = 125750000.0; // Rp 125.750.000
+  double _balance = 125750000.0; // Initial default balance, will be updated dynamically
 
   // GNN & SCB Performance Metrics (SupTech Proposal parameters)
   final double gnnAccuracy = 95.8; // F1-score > 95% target
   final double scbLatencyMs = 18.0; // SCB latency < 50ms target
   double totalBlockedValue = 800000000000.0; // Starts with Rp800 billion kerugian kasus nyata
 
-  // Blocked/Intercepted Suspicious Transactions (for Analyst Portal)
-  final List<Map<String, dynamic>> _blockedTransactions = [
-    {
-      'id': 'B1',
-      'senderName': 'Billy Jonathan',
-      'senderAccount': '1234567890',
-      'beneficiaryName': 'Budi Santoso',
-      'beneficiaryAccount': '987654', // Suspect mule account Bbud Santoso
-      'bankName': 'Bank Central Asia',
-      'amount': 45000000.0,
-      'timestamp': DateTime.now().subtract(const Duration(minutes: 12)),
-      'purpose': 'Investasi / Pembelian Aset Crypto',
-      'riskScore': 89.0,
-      'latencyMs': 18.0,
-      'status': 'DIBEKUKAN',
-      'referenceNumber': 'REF98234827',
-      'shapRiskFactors': {
-        'smurfingPattern': 0.94,
-        'muleAssociation': 0.88,
-        'cryptoEndpoint': 0.95,
-      }
-    },
-    {
-      'id': 'B2',
-      'senderName': 'Andi Wijaya',
-      'senderAccount': '1122334455',
-      'beneficiaryName': 'Budi Santoso',
-      'beneficiaryAccount': '987654',
-      'bankName': 'Bank Central Asia',
-      'amount': 25000000.0,
-      'timestamp': DateTime.now().subtract(const Duration(hours: 1, minutes: 15)),
-      'purpose': 'Investasi / Pembelian Aset Crypto',
-      'riskScore': 92.0,
-      'latencyMs': 16.0,
-      'status': 'DIBEKUKAN',
-      'referenceNumber': 'REF98102938',
-      'shapRiskFactors': {
-        'smurfingPattern': 0.91,
-        'muleAssociation': 0.94,
-        'cryptoEndpoint': 0.95,
-      }
-    },
-    {
-      'id': 'B3',
-      'senderName': 'Siti Rahma',
-      'senderAccount': '6543210987',
-      'beneficiaryName': 'Dewi Lestari',
-      'beneficiaryAccount': '456789',
-      'bankName': 'Bank Mandiri',
-      'amount': 15000000.0,
-      'timestamp': DateTime.now().subtract(const Duration(hours: 3)),
-      'purpose': 'Lainnya',
-      'riskScore': 42.0,
-      'latencyMs': 21.0,
-      'status': 'DILOLOSKAN',
-      'referenceNumber': 'REF88102930',
-      'shapRiskFactors': {
-        'smurfingPattern': 0.22,
-        'muleAssociation': 0.15,
-        'cryptoEndpoint': 0.05,
-      }
-    }
-  ];
+  // Blocked/Intercepted Suspicious Transactions (for Analyst Portal) - cleared for dynamic flow
+  final List<Map<String, dynamic>> _blockedTransactions = [];
 
-  // Transaction History
-  final List<TransactionModel> _transactions = [
-    TransactionModel(
-      id: 'TX1',
-      title: 'Transfer Masuk dari Kantor',
-      description: 'Gaji Bulanan - Crypto Sentinel Ltd',
-      amount: 15000000.0,
-      timestamp: DateTime.now().subtract(const Duration(hours: 4)),
-      type: TransactionType.credit,
-      status: TransactionStatus.success,
-      referenceNumber: 'REF98374298',
-    ),
-    TransactionModel(
-      id: 'TX2',
-      title: 'Pembayaran QRIS - Kopi Kenangan',
-      description: 'QRIS-NPM/0023491/JAKARTA',
-      amount: 45000.0,
-      timestamp: DateTime.now().subtract(const Duration(days: 1)),
-      type: TransactionType.debit,
-      status: TransactionStatus.success,
-      referenceNumber: 'REF0023491',
-    ),
-    TransactionModel(
-      id: 'TX3',
-      title: 'Top Up E-Wallet OVO',
-      description: 'OVO-TRF/88204938/DIGI',
-      amount: 150000.0,
-      timestamp: DateTime.now().subtract(const Duration(days: 1, hours: 2)),
-      type: TransactionType.debit,
-      status: TransactionStatus.success,
-      referenceNumber: 'REF88204938',
-    ),
-    TransactionModel(
-      id: 'TX4',
-      title: 'Bunga Rekening Bulanan',
-      description: 'INT-ACC/SAVINGS-DIV/01',
-      amount: 1200.0,
-      timestamp: DateTime.now().subtract(const Duration(days: 3)),
-      type: TransactionType.credit,
-      status: TransactionStatus.success,
-      referenceNumber: 'REF88029302',
-    ),
-  ];
+  // Transaction History - cleared for dynamic flow
+  final List<TransactionModel> _transactions = [];
 
-  // Saved/Favorite Recipients
+  // Saved/Favorite Recipients matching PostgreSQL database seeded values
   final List<FavoriteRecipient> _favorites = [
     const FavoriteRecipient(
       id: 'F1',
-      name: 'Siti Rahma',
-      bankName: 'Bank Rakyat Indonesia',
-      bankCode: '002',
-      accountNumber: '654321',
+      name: 'Penerima Dummy 1',
+      bankName: 'Bank Central Asia',
+      bankCode: '014',
+      accountNumber: '1122334455',
     ),
     const FavoriteRecipient(
       id: 'F2',
-      name: 'Budi Santoso',
-      bankName: 'Bank Central Asia',
-      bankCode: '014',
-      accountNumber: '987654',
+      name: 'Penerima Dummy 2',
+      bankName: 'Bank Rakyat Indonesia',
+      bankCode: '002',
+      accountNumber: '9876543210',
     ),
     const FavoriteRecipient(
       id: 'F3',
-      name: 'Dewi Lestari',
-      bankName: 'Bank Mandiri',
-      bankCode: '008',
-      accountNumber: '456789',
+      name: 'Pengirim Dummy 1',
+      bankName: 'Bank Rakyat Indonesia',
+      bankCode: '002',
+      accountNumber: '0123456789',
+    ),
+    const FavoriteRecipient(
+      id: 'F4',
+      name: 'Pengirim Dummy 2',
+      bankName: 'Bank Rakyat Indonesia',
+      bankCode: '002',
+      accountNumber: '5544332211',
     ),
   ];
 
@@ -190,6 +95,23 @@ class AppStateProvider extends ChangeNotifier {
   // 1. Account Name Lookup Action
   Future<String?> validateAccountNumber(String bankCode, String accountNumber) async {
     return await _apiService.validateAccountNumber(bankCode, accountNumber);
+  }
+
+  // Action to load the real user balance from the backend
+  Future<void> loadUserBalance() async {
+    try {
+      debugPrint('AppStateProvider: Loading user balance for ${_currentUser.accountNumber}...');
+      final details = await _apiService.getAccountDetails(_currentUser.accountNumber);
+      if (details != null) {
+        _balance = (details['balance'] as num).toDouble();
+        debugPrint('AppStateProvider: Loaded user balance successfully: $_balance');
+        notifyListeners();
+      } else {
+        debugPrint('AppStateProvider: Failed to load user balance (details is null)');
+      }
+    } catch (e) {
+      debugPrint('Error loading user balance from API: $e');
+    }
   }
 
   // 2. Perform Transfer Execution
@@ -292,6 +214,46 @@ class AppStateProvider extends ChangeNotifier {
   // 6. Delete specific notification
   void deleteNotification(String id) {
     _notifications.removeWhere((n) => n['id'] == id);
+    notifyListeners();
+  }
+
+  // 7. Load transactions from backend database
+  Future<void> loadTransactions() async {
+    try {
+      debugPrint('AppStateProvider: Loading transactions for ${_currentUser.accountNumber}...');
+      final txList = await _apiService.getTransactions(_currentUser.accountNumber);
+      _transactions.clear();
+      _transactions.addAll(txList);
+      debugPrint('AppStateProvider: Loaded ${txList.length} transactions successfully');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading transactions from API: $e');
+    }
+  }
+
+  // 8. Reset provider state on logout
+  void resetState() {
+    _balance = 125750000.0;
+    _blockedTransactions.clear();
+    _transactions.clear();
+    _scheduledTransfers.clear();
+    _notifications.clear();
+    _notifications.addAll([
+      {
+        'id': '1',
+        'title': 'Keamanan Akun',
+        'desc': 'Log masuk baru terdeteksi pada perangkat Android 2201117TY.',
+        'time': '1 jam yang lalu',
+        'isUnread': true,
+      },
+      {
+        'id': '2',
+        'title': 'Crypto-Sentinel Terintegrasi',
+        'desc': 'Proteksi Smart Circuit Breaker berbasis AI & GNN aktif mengamankan transfer Anda.',
+        'time': '1 hari yang lalu',
+        'isUnread': false,
+      },
+    ]);
     notifyListeners();
   }
 }

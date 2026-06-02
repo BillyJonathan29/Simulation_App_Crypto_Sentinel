@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/qris_scanner_overlay.dart';
 import '../providers/app_state_provider.dart';
@@ -22,11 +23,27 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   bool _showQrisScanner = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Refresh balance and transaction history on startup/mount
+    final state = Provider.of<AppStateProvider>(context, listen: false);
+    state.loadUserBalance();
+    state.loadTransactions();
+  }
+
   void _onTabChange(int index) {
     setState(() {
       _currentIndex = index;
       _showQrisScanner = false;
     });
+    
+    // Background refresh when entering Home tab
+    if (index == 0) {
+      final state = Provider.of<AppStateProvider>(context, listen: false);
+      state.loadUserBalance();
+      state.loadTransactions();
+    }
   }
 
   void _triggerQris() {
@@ -254,10 +271,25 @@ class _HomeTabState extends State<_HomeTab> {
     final state = context.watch<AppStateProvider>();
     final user = state.currentUser;
     final transactions = state.transactions;
+    final formattedBalance = NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: 'Rp',
+      decimalDigits: 0,
+    ).format(state.balance);
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Column(
+    return RefreshIndicator(
+      onRefresh: () async {
+        final stateProv = Provider.of<AppStateProvider>(context, listen: false);
+        await Future.wait([
+          stateProv.loadUserBalance(),
+          stateProv.loadTransactions(),
+        ]);
+      },
+      color: AppColors.primary,
+      backgroundColor: Colors.white,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
         children: [
           Stack(
             clipBehavior: Clip.none,
@@ -533,7 +565,7 @@ class _HomeTabState extends State<_HomeTab> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  _showBalance ? 'Rp15.800,00' : 'Rp ••••••••',
+                                  _showBalance ? formattedBalance : 'Rp ••••••••',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 22,
@@ -824,8 +856,9 @@ class _HomeTabState extends State<_HomeTab> {
           const SizedBox(height: 28),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // Feature icon button builder
   Widget _buildFeatureItem({

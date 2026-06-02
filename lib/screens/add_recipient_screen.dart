@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_state_provider.dart';
 
 /// Halaman Tambah Penerima Baru — BRImo style
 class AddRecipientScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class AddRecipientScreen extends StatefulWidget {
 class _AddRecipientScreenState extends State<AddRecipientScreen> {
   // 0 = Nomor Rekening, 1 = Kontak BI-FAST
   int _tab = 0;
+  bool _isLoading = false;
 
   // Nomor Rekening tab controllers
   String _selectedBank = 'BANK BRI';
@@ -62,21 +65,57 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
     }
   }
 
-  void _onLanjutkan() {
-    if (!_canProceed) return;
+  void _onLanjutkan() async {
+    if (!_canProceed || _isLoading) return;
+
+    setState(() => _isLoading = true);
 
     final Map<String, dynamic> recipient;
     if (_tab == 0) {
-      final name = _accountCtrl.text.trim().toUpperCase();
-      final initials = name.length >= 2
-          ? '${name[0]}${name.split(' ').length > 1 ? name.split(' ')[1][0] : name[1]}'
-          : name.substring(0, 1);
-      recipient = {
-        'name': name,
-        'bank': _selectedBank,
-        'account': _accountCtrl.text.trim(),
-        'initials': initials.toUpperCase(),
-      };
+      final accountNumber = _accountCtrl.text.trim();
+      
+      // Determine bank code
+      String bankCode = '002'; // Default BRI
+      if (_selectedBank == 'BANK BCA') bankCode = '014';
+      else if (_selectedBank == 'BANK MANDIRI') bankCode = '008';
+      else if (_selectedBank == 'BANK BNI') bankCode = '009';
+
+      try {
+        final provider = Provider.of<AppStateProvider>(context, listen: false);
+        final name = await provider.validateAccountNumber(bankCode, accountNumber);
+        
+        setState(() => _isLoading = false);
+
+        if (name == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Nomor rekening tidak ditemukan di database.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final initials = name.length >= 2
+            ? '${name[0]}${name.split(' ').length > 1 ? name.split(' ')[1][0] : name[1]}'
+            : name.isNotEmpty ? name.substring(0, 1) : '?';
+
+        recipient = {
+          'name': name.toUpperCase(),
+          'bank': _selectedBank,
+          'account': accountNumber,
+          'initials': initials.toUpperCase(),
+        };
+      } catch (e) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memvalidasi rekening: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
     } else {
       final input = _phoneEmailCtrl.text.trim();
       recipient = {
@@ -85,13 +124,13 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
         'account': input,
         'initials': input.isNotEmpty ? input[0].toUpperCase() : '?',
       };
+      setState(() => _isLoading = false);
     }
-
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Penerima berhasil ditambahkan!'),
-        backgroundColor: const Color(0xFF00A86B),
-        duration: const Duration(seconds: 2),
+      const SnackBar(
+        content: Text('Penerima berhasil ditemukan!'),
+        backgroundColor: Color(0xFF00A86B),
+        duration: Duration(seconds: 2),
       ),
     );
 
@@ -166,7 +205,7 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
                 child: AnimatedBuilder(
                   animation: Listenable.merge([_accountCtrl, _phoneEmailCtrl]),
                   builder: (context4, widget2) {
-                    final active = _canProceed;
+                    final active = _canProceed && !_isLoading;
                     return ElevatedButton(
                       onPressed: active ? _onLanjutkan : null,
                       style: ElevatedButton.styleFrom(
@@ -182,13 +221,22 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         elevation: 0,
                       ),
-                      child: const Text(
-                        'Lanjutkan',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Lanjutkan',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     );
                   },
                 ),

@@ -28,49 +28,57 @@ class _TransferScreenState extends State<TransferScreen> {
   final _currFmt = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 2);
   final _decFmt  = NumberFormat.decimalPattern('id');
 
-  // ─── Saved recipients ─────────────────────────────────────────────────────
-  final List<Map<String, dynamic>> _recipients = [
-    {
-      'name': 'ANISA ISTIYANA',
-      'bank': 'BANK BCA',
-      'account': '5290188239',
-      'initials': 'AI',
-    },
-    {
-      'name': 'BILLY JONATHAN',
-      'bank': 'BANK BCA',
-      'account': '2991800486',
-      'initials': 'BJ',
-    },
-    {
-      'name': 'DHANI AGUNG FIRDAUS',
-      'bank': 'BANK BCA',
-      'account': '2991024613',
-      'initials': 'DF',
-    },
-    {
-      'name': 'DNID BILXX JONXXXXX',
-      'bank': 'Dana',
-      'account': '089513187660',
-      'initials': 'DJ',
-    },
-  ];
+  late List<Map<String, dynamic>> _displayRecipients;
 
-  // ─── Recent transfers ──────────────────────────────────────────────────────
-  final List<Map<String, dynamic>> _recentTransfers = [
-    {
-      'name': 'DNID BILXX JONXXX...',
-      'bank': 'Dana',
-      'account': '089513187660',
-      'initials': 'DJ',
-    },
-    {
-      'name': 'KHOLIK KURNIAWAN...',
-      'bank': 'Shopeepay',
-      'account': '08978196439',
-      'initials': 'KA',
-    },
-  ];
+  bool get _isSesamaBri {
+    final bank = _selectedRecipient?['bank']?.toString().toUpperCase() ?? '';
+    // Cocokkan semua variasi nama BRI: 'BRI', 'RAKYAT INDONESIA', 'BANK RAKYAT'
+    return bank.contains('BRI') ||
+        bank.contains('RAKYAT INDONESIA') ||
+        bank.contains('BANK RAKYAT');
+  }
+
+  String get _bankCode {
+    final bank = _selectedRecipient?['bank']?.toString().toUpperCase() ?? '';
+    if (bank.contains('BRI') || bank.contains('RAKYAT INDONESIA') || bank.contains('BANK RAKYAT')) return '002';
+    if (bank.contains('BCA') || bank.contains('CENTRAL ASIA')) return '014';
+    if (bank.contains('MANDIRI')) return '008';
+    if (bank.contains('BNI') || bank.contains('NEGARA INDONESIA')) return '009';
+    if (bank.contains('BSI') || bank.contains('SYARIAH INDONESIA')) return '451';
+    if (bank.contains('CIMB')) return '022';
+    return '014'; // Default ke BCA untuk bank lain (interbank)
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final state = Provider.of<AppStateProvider>(context, listen: false);
+    _displayRecipients = state.favorites.map((fav) {
+      final name = fav.name;
+      final initials = name.length >= 2
+          ? '${name[0]}${name.split(' ').length > 1 ? name.split(' ')[1][0] : name[1]}'
+          : name.isNotEmpty ? name.substring(0, 1) : '?';
+      return {
+        'name': name.toUpperCase(),
+        'bank': fav.bankName.toUpperCase(),
+        'account': fav.accountNumber,
+        'initials': initials.toUpperCase(),
+      };
+    }).toList();
+  }
+
+  void _deleteRecipient(Map<String, dynamic> recipient) {
+    setState(() {
+      _displayRecipients.removeWhere((r) => r['account'] == recipient['account']);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Penerima ${recipient['name']} berhasil dihapus.'),
+        backgroundColor: AppColors.danger,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -98,7 +106,7 @@ class _TransferScreenState extends State<TransferScreen> {
           onBack: () => Navigator.of(context).pop(),
           onRecipientAdded: (recipient) {
             setState(() {
-              _recipients.add({
+              _displayRecipients.add({
                 'name':     recipient['name'] ?? '',
                 'bank':     recipient['bank'] ?? '',
                 'account':  recipient['account'] ?? '',
@@ -156,13 +164,13 @@ class _TransferScreenState extends State<TransferScreen> {
         beneficiaryName: _selectedRecipient!['name'],
         accountNumber:   _selectedRecipient!['account'],
         amount:          amount,
-        adminFee:        2500,
+        adminFee:        _isSesamaBri ? 0.0 : 2500.0,
         note:            _noteController.text.isNotEmpty
             ? _noteController.text
-            : 'Transfer BI-FAST',
+            : (_isSesamaBri ? 'Transfer Online' : 'Transfer BI-FAST'),
         bankName:        _selectedRecipient!['bank'],
-        bankCode:        _selectedRecipient!['bank'] == 'BANK BCA' ? '014' : '002',
-        transferMethod:  'BI-FAST',
+        bankCode:        _bankCode,
+        transferMethod:  _isSesamaBri ? 'Transfer Online' : 'BI-FAST',
       );
       if (mounted) setState(() => _currentStep = 2);
     } catch (e) {
@@ -198,6 +206,29 @@ class _TransferScreenState extends State<TransferScreen> {
   //  STEP 0 ─ Daftar Transfer
   // ══════════════════════════════════════════════════════════════════════════
   Widget _buildDaftarTransfer() {
+    final state = context.watch<AppStateProvider>();
+    final recentTransfers = <Map<String, dynamic>>[];
+    final seenAccounts = <String>{};
+
+    for (var tx in state.transactions) {
+      final acc = tx.accountNumber ?? '';
+      if (acc.isNotEmpty && !seenAccounts.contains(acc)) {
+        seenAccounts.add(acc);
+        final name = tx.title.startsWith('Transfer ke ')
+            ? tx.title.substring('Transfer ke '.length)
+            : tx.title;
+        final initials = name.length >= 2
+            ? '${name[0]}${name.split(' ').length > 1 ? name.split(' ')[1][0] : name[1]}'
+            : name.isNotEmpty ? name.substring(0, 1) : '?';
+        recentTransfers.add({
+          'name': name.toUpperCase(),
+          'bank': (tx.bankName ?? 'BANK').toUpperCase(),
+          'account': acc,
+          'initials': initials.toUpperCase(),
+        });
+      }
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F9),
       appBar: AppBar(
@@ -274,100 +305,101 @@ class _TransferScreenState extends State<TransferScreen> {
                   const SizedBox(height: 18),
 
                   // ── Transfer Terakhir ────────────────────────────────────
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Transfer Terakhir',
-                      style: TextStyle(
-                        color: Color(0xFF0F172A),
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.bold,
+                  if (recentTransfers.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'Transfer Terakhir',
+                        style: TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 10),
 
-                  SizedBox(
-                    height: 88,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      itemCount: _recentTransfers.length,
-                      itemBuilder: (_, i) {
-                        final r = _recentTransfers[i];
-                        return GestureDetector(
-                          onTap: () => _selectRecipient(r),
-                          child: Container(
-                            width: 190,
-                            margin: const EdgeInsets.only(right: 10),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: const Color(0xFFE2E8F0),
-                                width: 0.8,
+                    SizedBox(
+                      height: 88,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        itemCount: recentTransfers.length,
+                        itemBuilder: (_, i) {
+                          final r = recentTransfers[i];
+                          return GestureDetector(
+                            onTap: () => _selectRecipient(r),
+                            child: Container(
+                              width: 190,
+                              margin: const EdgeInsets.only(right: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
                               ),
-                            ),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 19,
-                                  backgroundColor: const Color(0xFFE8EEF5),
-                                  child: Text(
-                                    r['initials'],
-                                    style: const TextStyle(
-                                      color: Color(0xFF64748B),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E8F0),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 19,
+                                    backgroundColor: const Color(0xFFE8EEF5),
+                                    child: Text(
+                                      r['initials'],
+                                      style: const TextStyle(
+                                        color: Color(0xFF64748B),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        r['name'],
-                                        style: const TextStyle(
-                                          color: Color(0xFF0F172A),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          r['name'],
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        r['bank'],
-                                        style: const TextStyle(
-                                          color: Color(0xFF64748B),
-                                          fontSize: 10.5,
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          r['bank'],
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 10.5,
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        r['account'],
-                                        style: const TextStyle(
-                                          color: Color(0xFF64748B),
-                                          fontSize: 10.5,
+                                        Text(
+                                          r['account'],
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 10.5,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 14),
+                    const SizedBox(height: 14),
+                  ],
 
                   // ── Transfer Terjadwal Banner ────────────────────────────
                   Container(
@@ -489,13 +521,13 @@ class _TransferScreenState extends State<TransferScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       padding: EdgeInsets.zero,
-                      itemCount: _recipients.length,
+                      itemCount: _displayRecipients.length,
                       separatorBuilder: (ctx, idx) => const Padding(
                         padding: EdgeInsets.only(left: 72),
                         child: Divider(height: 0, color: Color(0xFFEEF2F7)),
                       ),
                       itemBuilder: (_, i) {
-                        final r = _recipients[i];
+                        final r = _displayRecipients[i];
                         return InkWell(
                           onTap: () => _selectRecipient(r),
                           child: Padding(
@@ -548,10 +580,45 @@ class _TransferScreenState extends State<TransferScreen> {
                                     ],
                                   ),
                                 ),
-                                const Icon(
-                                  Icons.more_vert_rounded,
-                                  color: Color(0xFF94A3B8),
-                                  size: 20,
+                                PopupMenuButton<String>(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.more_vert_rounded,
+                                    color: Color(0xFF94A3B8),
+                                    size: 20,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  onSelected: (value) {
+                                    if (value == 'transfer') {
+                                      _selectRecipient(r);
+                                    } else if (value == 'hapus') {
+                                      _deleteRecipient(r);
+                                    }
+                                  },
+                                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                    PopupMenuItem<String>(
+                                      value: 'transfer',
+                                      child: Row(
+                                        children: const [
+                                          Icon(Icons.send_rounded, color: Color(0xFF0070C0), size: 18),
+                                          SizedBox(width: 8),
+                                          Text('Transfer', style: TextStyle(fontSize: 13.5, color: Color(0xFF0F172A))),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem<String>(
+                                      value: 'hapus',
+                                      child: Row(
+                                        children: const [
+                                          Icon(Icons.delete_outline_rounded, color: Colors.red, size: 18),
+                                          SizedBox(width: 8),
+                                          Text('Hapus', style: TextStyle(fontSize: 13.5, color: Colors.red)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -728,61 +795,62 @@ class _TransferScreenState extends State<TransferScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 10),
-
-                  // ── B. Metode Transfer ────────────────────────────────
-                  Container(
-                    color: Colors.white,
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Metode Transfer',
-                          style: TextStyle(
-                            color: Color(0xFF0F172A),
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        GestureDetector(
-                          onTap: _showMetodeSheet,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
+                  if (!_isSesamaBri) ...[
+                    const SizedBox(height: 10),
+                    // ── B. Metode Transfer ────────────────────────────────
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Metode Transfer',
+                            style: TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
                             ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFFDDE3ED),
-                                width: 1,
+                          ),
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            onTap: _showMetodeSheet,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: const Color(0xFFDDE3ED),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: const [
+                                  Text(
+                                    'Transfer BI-FAST',
+                                    style: TextStyle(
+                                      color: Color(0xFF0F172A),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: Color(0xFF0070C0),
+                                    size: 22,
+                                  ),
+                                ],
                               ),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: const [
-                                Text(
-                                  'Transfer BI-FAST',
-                                  style: TextStyle(
-                                    color: Color(0xFF0F172A),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  color: Color(0xFF0070C0),
-                                  size: 22,
-                                ),
-                              ],
-                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
 
                   const SizedBox(height: 10),
 
@@ -1199,9 +1267,9 @@ class _TransferScreenState extends State<TransferScreen> {
                     _receiptRow('Rekening',    _selectedRecipient!['account']),
                     const Divider(height: 20, color: Color(0xFFEEF2F7)),
                     _receiptRow('Nominal',     formattedAmt),
-                    _receiptRow('Biaya Admin', 'Rp2.500,00 (BI-FAST)'),
+                    _receiptRow('Biaya Admin', _isSesamaBri ? 'Rp0' : 'Rp2.500,00 (BI-FAST)'),
                     const Divider(height: 20, color: Color(0xFFEEF2F7)),
-                    _receiptRow('Metode',      'BI-FAST'),
+                    _receiptRow('Metode',      _isSesamaBri ? 'Transfer Online' : 'BI-FAST'),
                     _receiptRow('No. Referensi', tx?.referenceNumber ?? '-'),
                   ],
                 ),

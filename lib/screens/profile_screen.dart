@@ -25,6 +25,10 @@ class ProfileScreen extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
+              
+              // Reset app state on logout
+              Provider.of<AppStateProvider>(context, listen: false).resetState();
+
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const LoginScreen()),

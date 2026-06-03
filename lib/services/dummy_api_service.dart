@@ -15,12 +15,13 @@ class DummyApiService {
     '001201': 'Billy Jonathan (BRI)',
   };
 
-  // Base URL detection (Using PC local IP: 192.168.1.5 so a real phone on the same Wi-Fi can connect)
+  // Base URL detection (Using PC local IP: 192.168.100.75 so a real phone on the same Wi-Fi can connect)
   String get baseUrl {
     if (kIsWeb) {
-      return 'http://localhost:8000/api/v1';
+      return 'http://localhost:8080/api/v1';
     } else {
-      return 'http://192.168.1.5:8000/api/v1';
+      // IP lokal PC - pastikan HP & PC terhubung ke WiFi yang sama
+      return 'http://192.168.100.75:8080/api/v1';
     }
   }
 

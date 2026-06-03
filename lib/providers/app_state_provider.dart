@@ -60,6 +60,20 @@ class AppStateProvider extends ChangeNotifier {
       bankCode: '002',
       accountNumber: '5544332211',
     ),
+    const FavoriteRecipient(
+      id: 'F5',
+      name: 'INDODAX MULE ACCOUNT (BLACKLIST)',
+      bankName: 'Bank Central Asia',
+      bankCode: '014',
+      accountNumber: 'C666666666',
+    ),
+    const FavoriteRecipient(
+      id: 'F6',
+      name: 'BUDI SANTOSO (MULE)',
+      bankName: 'Bank Central Asia',
+      bankCode: '014',
+      accountNumber: '987654',
+    ),
   ];
 
   // Scheduled Transfers list
@@ -73,6 +87,7 @@ class AppStateProvider extends ChangeNotifier {
       'desc': 'Log masuk baru terdeteksi pada perangkat Android 2201117TY.',
       'time': '1 jam yang lalu',
       'isUnread': true,
+      'status': 'info',
     },
     {
       'id': '2',
@@ -80,6 +95,7 @@ class AppStateProvider extends ChangeNotifier {
       'desc': 'Proteksi Smart Circuit Breaker berbasis AI & GNN aktif mengamankan transfer Anda.',
       'time': '1 hari yang lalu',
       'isUnread': false,
+      'status': 'success',
     },
   ];
 
@@ -217,6 +233,23 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 6b. Add a new notification dynamically
+  void addNotification({
+    required String title,
+    required String desc,
+    String? status,
+  }) {
+    _notifications.insert(0, {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': title,
+      'desc': desc,
+      'time': 'Baru saja',
+      'isUnread': true,
+      'status': status,
+    });
+    notifyListeners();
+  }
+
   // 7. Load transactions from backend database
   Future<void> loadTransactions() async {
     try {
@@ -245,6 +278,7 @@ class AppStateProvider extends ChangeNotifier {
         'desc': 'Log masuk baru terdeteksi pada perangkat Android 2201117TY.',
         'time': '1 jam yang lalu',
         'isUnread': true,
+        'status': 'info',
       },
       {
         'id': '2',
@@ -252,6 +286,7 @@ class AppStateProvider extends ChangeNotifier {
         'desc': 'Proteksi Smart Circuit Breaker berbasis AI & GNN aktif mengamankan transfer Anda.',
         'time': '1 hari yang lalu',
         'isUnread': false,
+        'status': 'success',
       },
     ]);
     notifyListeners();

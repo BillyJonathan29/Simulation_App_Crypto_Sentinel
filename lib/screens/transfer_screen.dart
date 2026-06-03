@@ -17,8 +17,15 @@ class TransferScreen extends StatefulWidget {
 }
 
 class _TransferScreenState extends State<TransferScreen> {
-  // Step: 0 = Daftar Transfer, 1 = Masukkan Nominal, 2 = Sukses
+  // Step: 0 = Daftar Transfer, 1 = Masukkan Nominal, 2 = Hasil
   int _currentStep = 0;
+  bool _isLoading = false;
+
+  // Hasil transfer: 'success' | 'blocked' | 'pending'
+  String _transferResult = 'success';
+  String _blockReason   = '';
+  int    _riskScore     = 0;
+  String _txId          = '';
 
   Map<String, dynamic>? _selectedRecipient;
   final TextEditingController _amountController = TextEditingController();
@@ -156,9 +163,86 @@ class _TransferScreenState extends State<TransferScreen> {
 
   // ─── Execute transfer ──────────────────────────────────────────────────────
   Future<void> _executeTransfer() async {
+    if (_isLoading) return;
     final state  = Provider.of<AppStateProvider>(context, listen: false);
     final raw    = _amountController.text.replaceAll('.', '');
     final amount = double.tryParse(raw) ?? 0.0;
+
+    if (mounted) setState(() => _isLoading = true);
+
+    // ── Simulasi analisis Crypto-Sentinel (delay realistis)
+    await Future.delayed(const Duration(milliseconds: 1800));
+
+    // ── Tentukan skenario berdasarkan nominal (demo logic)
+    // Rp ≥ 100 juta → BLOKIR (high risk)
+    // Rp 50 juta – 99 juta → PENDING (review manual)
+    // Di bawah Rp 50 juta → SUKSES
+    final txId = 'TXN${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    final fmtAmount = _currFmt.format(amount);
+
+    final destAcc = _selectedRecipient?['account']?.toString() ?? '';
+    final isBlacklist = destAcc.startsWith('C') ||
+                        destAcc == 'C666666666' ||
+                        destAcc == 'C999999999' ||
+                        destAcc == 'C777777777' ||
+                        destAcc == 'C123456789' ||
+                        destAcc == 'C888888888';
+    final adminFee = _isSesamaBri ? 0.0 : 2500.0;
+    final isDrained = (amount + adminFee) >= state.balance;
+    final isMule = destAcc == '987654' || destAcc == '9876543210';
+
+    if (isBlacklist) {
+      // ── SKENARIO BLOKIR (blacklist account)
+      final riskScore = 98;
+      if (mounted) {
+        setState(() {
+          _isLoading      = false;
+          _transferResult = 'blocked';
+          _blockReason    = 'Transaksi diblokir otomatis oleh sistem keamanan Crypto-Sentinel karena '
+                            'rekening tujuan terdaftar dalam blacklist OJK/Crypto-Sentinel.';
+          _riskScore      = riskScore;
+          _txId           = txId;
+          _currentStep    = 2;
+        });
+      }
+      state.addNotification(
+        title: 'Transfer Gagal (Anomali)',
+        desc: 'Transfer ke ${_selectedRecipient!['name']} sebesar $fmtAmount diblokir: Terdeteksi rekening blacklist.',
+        status: 'failed',
+      );
+      state.registerBlockedTransaction(
+        beneficiaryName: _selectedRecipient!['name'],
+        accountNumber:   _selectedRecipient!['account'],
+        bankName:        _selectedRecipient!['bank'],
+        amount:          amount,
+        purpose:         'Watchlist/Threat Intel Match (Blacklist)',
+      );
+      return;
+    }
+
+    if (isDrained && isMule) {
+      // ── SKENARIO PENDING (drained + mule account)
+      final riskScore = 68;
+      if (mounted) {
+        setState(() {
+          _isLoading      = false;
+          _transferResult = 'pending';
+          _blockReason    = 'Transaksi ditangguhkan karena terdeteksi anomali: '
+                            'Saldo rekening pengirim dikuras habis ke rekening penampung (mule account).';
+          _riskScore      = riskScore;
+          _txId           = txId;
+          _currentStep    = 2;
+        });
+      }
+      state.addNotification(
+        title: 'Transfer Ditangguhkan (Review)',
+        desc: 'Transfer ke ${_selectedRecipient!['name']} sebesar $fmtAmount ditahan sementara untuk verifikasi keamanan.',
+        status: 'pending',
+      );
+      return;
+    }
+
+    // ── SKENARIO SUKSES (nominal normal)
     try {
       await state.executeTransfer(
         beneficiaryName: _selectedRecipient!['name'],
@@ -172,12 +256,82 @@ class _TransferScreenState extends State<TransferScreen> {
         bankCode:        _bankCode,
         transferMethod:  _isSesamaBri ? 'Transfer Online' : 'BI-FAST',
       );
-      if (mounted) setState(() => _currentStep = 2);
+      if (mounted) {
+        setState(() {
+          _isLoading      = false;
+          _transferResult = 'success';
+          _txId           = txId;
+          _currentStep    = 2;
+        });
+      }
+      state.addNotification(
+        title: 'Transfer Berhasil',
+        desc: 'Transfer ke ${_selectedRecipient!['name']} sebesar $fmtAmount berhasil dikirim.',
+        status: 'success',
+      );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
-        );
+        setState(() => _isLoading = false);
+        final errMsg = e.toString().replaceFirst('Exception: ', '');
+        
+        if (errMsg.contains('diblokir otomatis oleh sistem keamanan Crypto-Sentinel')) {
+          int score = 85;
+          final scoreReg = RegExp(r'Skor Risiko: (\d+)');
+          final match = scoreReg.firstMatch(errMsg);
+          if (match != null) {
+            score = int.parse(match.group(1)!);
+          }
+          
+          setState(() {
+            _transferResult = 'blocked';
+            _blockReason    = errMsg;
+            _riskScore      = score;
+            _txId           = txId;
+            _currentStep    = 2;
+          });
+          
+          state.addNotification(
+            title: 'Transfer Gagal (Anomali)',
+            desc: 'Transfer ke ${_selectedRecipient!['name']} sebesar $fmtAmount diblokir: Terdeteksi pola anomali.',
+            status: 'failed',
+          );
+          state.registerBlockedTransaction(
+            beneficiaryName: _selectedRecipient!['name'],
+            accountNumber:   _selectedRecipient!['account'],
+            bankName:        _selectedRecipient!['bank'],
+            amount:          amount,
+            purpose:         'Watchlist/Threat Intel Match',
+          );
+        } else if (errMsg.contains('ditangguhkan oleh sistem keamanan Crypto-Sentinel')) {
+          int score = 65;
+          final scoreReg = RegExp(r'Skor Risiko: (\d+)');
+          final match = scoreReg.firstMatch(errMsg);
+          if (match != null) {
+            score = int.parse(match.group(1)!);
+          }
+          
+          setState(() {
+            _transferResult = 'pending';
+            _blockReason    = errMsg;
+            _riskScore      = score;
+            _txId           = txId;
+            _currentStep    = 2;
+          });
+          
+          state.addNotification(
+            title: 'Transfer Ditangguhkan (Review)',
+            desc: 'Transfer ke ${_selectedRecipient!['name']} sebesar $fmtAmount ditahan sementara untuk verifikasi keamanan.',
+            status: 'pending',
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errMsg),
+              backgroundColor: AppColors.danger,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
     }
   }
@@ -198,8 +352,349 @@ class _TransferScreenState extends State<TransferScreen> {
     switch (_currentStep) {
       case 0:  return _buildDaftarTransfer();
       case 1:  return _buildMasukkanNominal();
-      default: return _buildSuccessReceipt();
+      default:
+        if (_transferResult == 'blocked') return _buildBlockedScreen();
+        if (_transferResult == 'pending') return _buildPendingScreen();
+        return _buildSuccessReceipt();
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  SCREEN: TRANSAKSI DIBLOKIR
+  // ══════════════════════════════════════════════════════════════════════════
+  Widget _buildBlockedScreen() {
+    final amount = double.tryParse(_amountController.text.replaceAll('.', '')) ?? 0.0;
+    final fmt = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Header merah
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFD32F2F), Color(0xFFB71C1C)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.block_rounded, color: Colors.white, size: 44),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Transaksi Diblokir',
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  Text('oleh Crypto-Sentinel AI',
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13)),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Risk score badge
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFEBEE),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: const Color(0xFFD32F2F), width: 1.5),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Color(0xFFD32F2F), size: 18),
+                            const SizedBox(width: 8),
+                            Text('Risk Score: $_riskScore / 100',
+                              style: const TextStyle(color: Color(0xFFD32F2F), fontWeight: FontWeight.w800, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Detail card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          _detailRow('ID Transaksi', _txId),
+                          _detailRow('Penerima', _selectedRecipient?['name'] ?? '-'),
+                          _detailRow('Nominal', fmt.format(amount)),
+                          _detailRow('Bank Tujuan', _selectedRecipient?['bank'] ?? '-'),
+                          _detailRow('Status', '⛔ DIBLOKIR'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Alasan
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFEF9A9A)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Alasan Pemblokiran:',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFFD32F2F))),
+                          const SizedBox(height: 6),
+                          Text(_blockReason,
+                            style: const TextStyle(fontSize: 13, color: Color(0xFF5D2E2E), height: 1.5)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Info Sentinel
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.shield_rounded, color: Color(0xFF0070C0), size: 20),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Transaksi ini telah dilaporkan ke sistem Crypto-Sentinel '
+                              'dan tim kepatuhan OJK untuk investigasi lebih lanjut.',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Tombol kembali
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => setState(() { _currentStep = 0; _transferResult = 'success'; }),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD32F2F),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('Kembali ke Beranda', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  SCREEN: TRANSAKSI PENDING
+  // ══════════════════════════════════════════════════════════════════════════
+  Widget _buildPendingScreen() {
+    final amount = double.tryParse(_amountController.text.replaceAll('.', '')) ?? 0.0;
+    final fmt = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Header kuning
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.hourglass_top_rounded, color: Colors.white, size: 44),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Transaksi Ditahan',
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  Text('Menunggu Verifikasi Manual',
+                    style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Risk score badge
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.timelapse_rounded, color: Color(0xFFF59E0B), size: 18),
+                            const SizedBox(width: 8),
+                            Text('Risk Score: $_riskScore / 100 — MEDIUM',
+                              style: const TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w800, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Detail card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          _detailRow('ID Transaksi', _txId),
+                          _detailRow('Penerima', _selectedRecipient?['name'] ?? '-'),
+                          _detailRow('Nominal', fmt.format(amount)),
+                          _detailRow('Bank Tujuan', _selectedRecipient?['bank'] ?? '-'),
+                          _detailRow('Status', '⏳ PENDING REVIEW'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Alasan
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFDE68A)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Keterangan:',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF92400E))),
+                          const SizedBox(height: 6),
+                          Text(_blockReason,
+                            style: const TextStyle(fontSize: 13, color: Color(0xFF78350F), height: 1.5)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Timeline estimasi
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Estimasi Proses:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                          SizedBox(height: 8),
+                          _TimelineItem(icon: Icons.looks_one_rounded, color: Color(0xFFF59E0B), text: 'Sedang dianalisis oleh sistem AI'),
+                          _TimelineItem(icon: Icons.looks_two_rounded, color: Color(0xFF6B7280), text: 'Review oleh tim kepatuhan BRI'),
+                          _TimelineItem(icon: Icons.looks_3_rounded, color: Color(0xFF6B7280), text: 'Notifikasi hasil dalam 1×24 jam'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Tombol kembali
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: widget.onBackToHome,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('Kembali ke Beranda', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper row untuk detail card
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        ],
+      ),
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1178,13 +1673,13 @@ class _TransferScreenState extends State<TransferScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: canSubmit ? _showPinDialog : null,
+                  onPressed: (_isLoading || !canSubmit) ? null : _showPinDialog,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: canSubmit
+                    backgroundColor: canSubmit && !_isLoading
                         ? const Color(0xFF0070C0)
                         : const Color(0xFFCDD5E0),
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFCDD5E0),
+                    disabledBackgroundColor: const Color(0xFF0070C0),
                     disabledForegroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -1192,10 +1687,19 @@ class _TransferScreenState extends State<TransferScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Lanjutkan',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Text(
+                          'Lanjutkan',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ),
@@ -1430,6 +1934,30 @@ class _MetodeTransferSheet extends StatelessWidget {
               fontWeight: FontWeight.bold,
             )),
       ],
+    );
+  }
+}
+
+// ─── Timeline item untuk halaman PENDING ──────────────────────────────────
+class _TimelineItem extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+  const _TimelineItem({required this.icon, required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+          ),
+        ],
+      ),
     );
   }
 }

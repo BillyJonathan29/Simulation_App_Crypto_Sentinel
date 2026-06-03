@@ -64,6 +64,29 @@ class NotificationScreen extends StatelessWidget {
               itemBuilder: (context, index) {
                 final notif = notifs[index];
                 final isTransfer = notif['title']?.toString().contains('Transfer') ?? true;
+                final status = notif['status']?.toString();
+
+                Color iconBgColor = const Color(0xFFE8F1FF); // default soft blue
+                Color iconColor = AppColors.primary; // default primary
+                IconData iconData = isTransfer ? Icons.compare_arrows_rounded : Icons.qr_code_scanner_rounded;
+
+                if (status == 'failed') {
+                  iconBgColor = const Color(0xFFFEE2E2); // soft red
+                  iconColor = const Color(0xFFEF4444); // vivid red
+                  iconData = Icons.gpp_bad_rounded;
+                } else if (status == 'pending') {
+                  iconBgColor = const Color(0xFFFEF3C7); // soft orange
+                  iconColor = const Color(0xFFF59E0B); // vivid orange
+                  iconData = Icons.hourglass_empty_rounded;
+                } else if (status == 'success') {
+                  iconBgColor = const Color(0xFFDCFCE7); // soft green
+                  iconColor = const Color(0xFF22C55E); // vivid green
+                  iconData = isTransfer ? Icons.compare_arrows_rounded : Icons.qr_code_scanner_rounded;
+                } else if (status == 'info') {
+                  iconBgColor = const Color(0xFFE0F2FE); // soft blue-sky
+                  iconColor = const Color(0xFF0284C7); // sky blue
+                  iconData = Icons.shield_rounded;
+                }
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -78,18 +101,18 @@ class NotificationScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      // 1. Transaction Icon Container (Matches Image 3)
+                      // 1. Transaction Icon Container (Dynamic status-based styling)
                       Container(
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F1FF), // Soft blue tint circle
+                          color: iconBgColor,
                           shape: BoxShape.circle,
                         ),
                         child: Center(
                           child: Icon(
-                            isTransfer ? Icons.compare_arrows_rounded : Icons.qr_code_scanner_rounded,
-                            color: AppColors.primary,
+                            iconData,
+                            color: iconColor,
                             size: 22,
                           ),
                         ),
@@ -129,16 +152,28 @@ class NotificationScreen extends StatelessWidget {
                         ),
                       ),
 
-                      // 3. Green "Sukses" Badge Pill (Matches Image 3 exactly)
+                      // 3. Dynamic Badge Pill (Matches Image 3 exactly but with status-based colors)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E), // Vivid Emerald Green Success Badge
+                          color: status == 'failed'
+                              ? const Color(0xFFEF4444)
+                              : status == 'pending'
+                                  ? const Color(0xFFF59E0B)
+                                  : status == 'info'
+                                      ? const Color(0xFF0284C7)
+                                      : const Color(0xFF22C55E),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text(
-                          'Sukses',
-                          style: TextStyle(
+                        child: Text(
+                          status == 'failed'
+                              ? 'Gagal'
+                              : status == 'pending'
+                                  ? 'Pending'
+                                  : status == 'info'
+                                      ? 'Info'
+                                      : 'Sukses',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,18 +8,28 @@ import 'providers/app_state_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Lock app orientation to Portrait
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]).then((_) {
+
+  if (kIsWeb) {
+    // setPreferredOrientations tidak support di Web, langsung runApp
     runApp(
       ChangeNotifierProvider(
         create: (context) => AppStateProvider(),
         child: const MyApp(),
       ),
     );
-  });
+  } else {
+    // Lock app orientation to Portrait (mobile only)
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]).then((_) {
+      runApp(
+        ChangeNotifierProvider(
+          create: (context) => AppStateProvider(),
+          child: const MyApp(),
+        ),
+      );
+    });
+  }
 }
 
 class MyApp extends StatelessWidget {
